@@ -814,4 +814,4 @@ if Remotes.AnimationControl then remoteCount = remoteCount + 1 end
 game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
     Text = "📡 Parry remotes found: " .. remoteCount,
     Color = Color3.fromRGB(100, 200, 255)
-})q
+})
