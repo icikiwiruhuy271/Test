@@ -1,4 +1,4 @@
--- Auto Parry Script for Violence District v3
+-- Auto Parry Script for Violence District v4
 -- Created for Roblox Violence District
 
 local Player = game.Players.LocalPlayer
@@ -8,6 +8,7 @@ local RunService = game:GetService("RunService")
 local GuiService = game:GetService("GuiService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 
 -- Configuration
 local Config = {
@@ -16,99 +17,16 @@ local Config = {
     DetectionRange = 50, -- Max range to detect killer attacks
     ShowDebug = true, -- Set to true for debug info
     AutoParryKey = Enum.KeyCode.P, -- Toggle key
-    ParryCooldown = 0.25, -- Cooldown between parries
+    ParryCooldown = 3.0, -- Cooldown between parries (3 seconds)
+    ParryAnimationDuration = 3.0, -- Duration of parry animation
     UseAllDetections = true, -- Use all detection methods
 }
 
--- Remote Events & Functions - COMPLETE
-local Remotes = {
-    -- Attack folder
-    Attack = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Attack"),
-    
-    -- Generator folder
-    Generator = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator"),
-    
-    -- Killes folder
-    Killes = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Killes"),
-    
-    -- Remotes folder
-    RemotesFolder = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Remotes"),
-    
-    -- Parry related
-    Parry = ReplicatedStorage:FindFirstChild("ParryClient"),
-    ParryResult = ReplicatedStorage:FindFirstChild("ParryResult"),
-    ParryAnimation = ReplicatedStorage:FindFirstChild("parry"),
-    AnimationControl = ReplicatedStorage:FindFirstChild("AnimationControl"),
-    AnimationHandler = ReplicatedStorage:FindFirstChild("AnimationHandler"),
-    
-    -- Items
-    ParryingDagger = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Items") and ReplicatedStorage.Remotes.Items:FindFirstChild("Parrying Dagger"),
-    
-    -- Emote
-    EmoteHandler = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("EmoteHandler"),
+-- Animation IDs for parry
+local PARRY_ANIMATIONS = {
+    ['rbxassetid://127096285501517'] = true,  -- Parry animation 1
+    ['rbxassetid://104952902180174'] = true,  -- Parry animation 2
 }
-
--- Get specific remotes from folders
-local function GetRemoteFromFolder(folder, remoteName)
-    if not folder then return nil end
-    for _, child in pairs(folder:GetChildren()) do
-        if child.Name == remoteName then
-            return child
-        end
-    end
-    return nil
-end
-
--- Attack remotes
-local AttackRemotes = {
-    AfterAttack = Remotes.Attack and GetRemoteFromFolder(Remotes.Attack, "AfterAttack"),
-    BasicAttack = Remotes.Attack and GetRemoteFromFolder(Remotes.Attack, "BasicAttack"),
-    Lunge = Remotes.Attack and GetRemoteFromFolder(Remotes.Attack, "Lunge"),
-    LungeDetect = Remotes.Attack and GetRemoteFromFolder(Remotes.Attack, "LungeDetect"),
-    TrailEvent = Remotes.Attack and GetRemoteFromFolder(Remotes.Attack, "TrailEvent"),
-    hit = Remotes.Attack and GetRemoteFromFolder(Remotes.Attack, "hit"),
-}
-
--- Generator remotes
-local GeneratorRemotes = {
-    BreakGenAnim = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "BreakGenAnim"),
-    BreakGenCommit = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "BreakGenCommit"),
-    BreakGenEvent = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "BreakGenEvent"),
-    BreakGenReject = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "BreakGenReject"),
-    Escpetime = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "Escpetime"),
-    GeenDone = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "GeenDone"),
-    RepairAnim = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "RepairAnim"),
-    RepairEvent = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "RepairEvent"),
-    RepairVFX = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "RepairVFX"),
-    SkillCheckEvent = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "SkillCheckEvent"),
-    SkillChekFallEvent = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "SkillChekFallEvent"),
-    SkillCheckResultEvent = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "SkillCheckResultEvent"),
-    Skillcheckvalidetect = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "Skillcheckvalidetect"),
-    allgendone = Remotes.Generator and GetRemoteFromFolder(Remotes.Generator, "allgendone"),
-}
-
--- Killes remotes
-local KillesRemotes = {
-    Damage = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Damage"),
-    DamageDone = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "DamageDone"),
-    Damageviz = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Damageviz"),
-    Highlightbindable = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Highlightbindable"),
-    Highlightremote = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Highlightremote"),
-    Instinct = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Instinct"),
-    Revealed = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Revealed"),
-    SetAction = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "SetAction"),
-    SlowAttack = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "SlowAttack"),
-    Startmori = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Startmori"),
-    Stunned = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Stunned"),
-}
-
--- Parrying Dagger item remotes
-local ParryingDaggerRemotes = {}
-if Remotes.ParryingDagger then
-    for _, child in pairs(Remotes.ParryingDagger:GetChildren()) do
-        ParryingDaggerRemotes[child.Name] = child
-    end
-end
 
 -- Animation IDs for killer attacks
 local VD_ATTACK_ANIMS = {
@@ -137,12 +55,73 @@ local VD_ATTACK_ANIMS = {
     ['rbxassetid://122812055447896'] = true,
 }
 
+-- Remote Events & Functions
+local Remotes = {
+    Attack = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Attack"),
+    Generator = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Generator"),
+    Killes = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Killes"),
+    RemotesFolder = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Remotes"),
+    Parry = ReplicatedStorage:FindFirstChild("ParryClient"),
+    ParryResult = ReplicatedStorage:FindFirstChild("ParryResult"),
+    ParryAnimation = ReplicatedStorage:FindFirstChild("parry"),
+    AnimationControl = ReplicatedStorage:FindFirstChild("AnimationControl"),
+    AnimationHandler = ReplicatedStorage:FindFirstChild("AnimationHandler"),
+    ParryingDagger = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Items") and ReplicatedStorage.Remotes.Items:FindFirstChild("Parrying Dagger"),
+    EmoteHandler = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("EmoteHandler"),
+}
+
+-- Get specific remotes from folders
+local function GetRemoteFromFolder(folder, remoteName)
+    if not folder then return nil end
+    for _, child in pairs(folder:GetChildren()) do
+        if child.Name == remoteName then
+            return child
+        end
+    end
+    return nil
+end
+
+-- Attack remotes
+local AttackRemotes = {
+    AfterAttack = Remotes.Attack and GetRemoteFromFolder(Remotes.Attack, "AfterAttack"),
+    BasicAttack = Remotes.Attack and GetRemoteFromFolder(Remotes.Attack, "BasicAttack"),
+    Lunge = Remotes.Attack and GetRemoteFromFolder(Remotes.Attack, "Lunge"),
+    LungeDetect = Remotes.Attack and GetRemoteFromFolder(Remotes.Attack, "LungeDetect"),
+    TrailEvent = Remotes.Attack and GetRemoteFromFolder(Remotes.Attack, "TrailEvent"),
+    hit = Remotes.Attack and GetRemoteFromFolder(Remotes.Attack, "hit"),
+}
+
+-- Killes remotes
+local KillesRemotes = {
+    Damage = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Damage"),
+    DamageDone = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "DamageDone"),
+    Damageviz = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Damageviz"),
+    Highlightbindable = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Highlightbindable"),
+    Highlightremote = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Highlightremote"),
+    Instinct = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Instinct"),
+    Revealed = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Revealed"),
+    SetAction = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "SetAction"),
+    SlowAttack = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "SlowAttack"),
+    Startmori = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Startmori"),
+    Stunned = Remotes.Killes and GetRemoteFromFolder(Remotes.Killes, "Stunned"),
+}
+
+-- Parrying Dagger item remotes
+local ParryingDaggerRemotes = {}
+if Remotes.ParryingDagger then
+    for _, child in pairs(Remotes.ParryingDagger:GetChildren()) do
+        ParryingDaggerRemotes[child.Name] = child
+    end
+end
+
 -- Variables
 local isParrying = false
 local lastParryTime = 0
 local UI = nil
 local currentTarget = nil
-local detectedAttacks = {}
+local isParryAnimPlaying = false
+local parryAnimTrack = nil
+local currentParryAnimation = nil
 
 -- Debug function
 local function DebugLog(...)
@@ -151,10 +130,76 @@ local function DebugLog(...)
     end
 end
 
--- Perform Parry - MAIN FUNCTION
+-- Play Parry Animation
+local function PlayParryAnimation()
+    if not Character then return end
+    
+    local humanoid = Character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+    
+    local animator = humanoid:FindFirstChild("Animator")
+    if not animator then return end
+    
+    -- Stop any existing parry animation
+    if parryAnimTrack and parryAnimTrack.IsPlaying then
+        parryAnimTrack:Stop()
+        parryAnimTrack = nil
+    end
+    
+    -- Select random parry animation
+    local animIds = {}
+    for id, _ in pairs(PARRY_ANIMATIONS) do
+        table.insert(animIds, id)
+    end
+    
+    if #animIds == 0 then
+        DebugLog("No parry animations found!")
+        return
+    end
+    
+    local selectedAnim = animIds[math.random(1, #animIds)]
+    currentParryAnimation = selectedAnim
+    
+    DebugLog("Playing parry animation: " .. selectedAnim)
+    
+    -- Load and play animation
+    local success, anim = pcall(function()
+        return Instance.new("Animation")
+    end)
+    
+    if success and anim then
+        anim.AnimationId = selectedAnim
+        local track = animator:LoadAnimation(anim)
+        if track then
+            track:Play()
+            parryAnimTrack = track
+            isParryAnimPlaying = true
+            
+            -- Set animation speed
+            track:AdjustSpeed(1)
+            
+            DebugLog("Parry animation playing!")
+        end
+    else
+        DebugLog("Failed to load parry animation!")
+    end
+end
+
+-- Stop Parry Animation
+local function StopParryAnimation()
+    if parryAnimTrack and parryAnimTrack.IsPlaying then
+        parryAnimTrack:Stop()
+        parryAnimTrack = nil
+    end
+    isParryAnimPlaying = false
+    DebugLog("Parry animation stopped")
+end
+
+-- Perform Parry with Animation
 local function PerformParry()
     if isParrying then return end
     if not Config.Enabled then return end
+    if isParryAnimPlaying then return end
     
     local currentTime = tick()
     if currentTime - lastParryTime < Config.ParryCooldown then return end
@@ -209,14 +254,87 @@ local function PerformParry()
             end)
         end
         
-        -- Reset parry state
-        task.wait(0.15)
-        isParrying = false
+        -- Play parry animation
+        PlayParryAnimation()
         
-        DebugLog("✅ Parry executed successfully!")
+        -- Disable movement during parry animation
+        local humanoid = Character:FindFirstChild("Humanoid")
+        if humanoid then
+            humanoid.WalkSpeed = 0
+            humanoid.JumpPower = 0
+            DebugLog("Movement disabled during parry")
+        end
+        
+        DebugLog("✅ Parry executed successfully! (3 second cooldown)")
+        
+        -- Create visual effect
+        CreateParryEffect()
+        
+        -- Schedule animation stop after 3 seconds
+        task.wait(Config.ParryAnimationDuration)
+        
+        -- Stop animation and re-enable movement
+        StopParryAnimation()
+        if humanoid then
+            humanoid.WalkSpeed = 16 -- Default walk speed
+            humanoid.JumpPower = 50 -- Default jump power
+            DebugLog("Movement re-enabled")
+        end
+        
+        isParrying = false
     else
         DebugLog("❌ No parry remote found!")
     end
+end
+
+-- Create visual effect for parry
+local function CreateParryEffect()
+    if not Character or not Character:FindFirstChild("HumanoidRootPart") then return end
+    
+    local rootPart = Character.HumanoidRootPart
+    local position = rootPart.Position
+    
+    -- Create a ring effect
+    local ring = Instance.new("Part")
+    ring.Size = Vector3.new(8, 0.2, 8)
+    ring.Position = position + Vector3.new(0, 0.5, 0)
+    ring.Anchored = true
+    ring.CanCollide = false
+    ring.Transparency = 0.5
+    ring.BrickColor = BrickColor.new("Bright blue")
+    ring.Material = Enum.Material.Neon
+    ring.Parent = workspace
+    
+    -- Add a glow
+    local glow = Instance.new("Part")
+    glow.Size = Vector3.new(10, 0.1, 10)
+    glow.Position = position + Vector3.new(0, 0.3, 0)
+    glow.Anchored = true
+    glow.CanCollide = false
+    glow.Transparency = 0.7
+    glow.BrickColor = BrickColor.new("White")
+    glow.Material = Enum.Material.Neon
+    glow.Parent = workspace
+    
+    -- Fade out effect
+    local startTime = tick()
+    local duration = 0.5
+    
+    game:GetService("RunService").Heartbeat:Connect(function()
+        local elapsed = tick() - startTime
+        if elapsed >= duration then
+            ring:Destroy()
+            glow:Destroy()
+            return
+        end
+        
+        local alpha = 1 - (elapsed / duration)
+        ring.Transparency = 0.5 + (0.5 * (1 - alpha))
+        glow.Transparency = 0.7 + (0.3 * (1 - alpha))
+        ring.Size = Vector3.new(8 + (elapsed * 10), 0.2, 8 + (elapsed * 10))
+    end)
+    
+    DebugLog("Parry visual effect created")
 end
 
 -- Check if character is attacking via animation
@@ -250,7 +368,7 @@ local function GetClosestKiller()
     local closestKiller = nil
     local closestDistance = Config.DetectionRange
     
-    for _, player in pairs(game.Players:GetPlayers()) do
+    for _, player in pairs(Players:GetPlayers()) do
         if player ~= Player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
             local killerRoot = player.Character.HumanoidRootPart
             local distance = (rootPart.Position - killerRoot.Position).Magnitude
@@ -282,6 +400,9 @@ local function StartAutoParry()
             return
         end
         
+        -- Skip if parry animation is playing
+        if isParryAnimPlaying then return end
+        
         -- Find closest attacking killer
         local killer = GetClosestKiller()
         if killer then
@@ -297,9 +418,9 @@ local function SetupAllAttackListeners()
         if remote and remote:IsA("RemoteEvent") then
             remote.OnClientEvent:Connect(function(...)
                 if not Config.Enabled then return end
+                if isParryAnimPlaying then return end
                 
                 local args = {...}
-                -- Check if first arg is a player
                 if args[1] and type(args[1]) == "Instance" then
                     if args[1]:IsA("Player") and args[1] ~= Player then
                         DebugLog("Attack detected: " .. remoteName .. " from: " .. args[1].Name)
@@ -307,7 +428,6 @@ local function SetupAllAttackListeners()
                         PerformParry()
                     end
                 else
-                    -- If no player arg, still try to parry
                     DebugLog("Attack detected: " .. remoteName .. " (no player info)")
                     task.wait(Config.ParryDelay)
                     PerformParry()
@@ -321,6 +441,7 @@ local function SetupAllAttackListeners()
         if remote and remote:IsA("RemoteEvent") then
             remote.OnClientEvent:Connect(function(...)
                 if not Config.Enabled then return end
+                if isParryAnimPlaying then return end
                 
                 local args = {...}
                 if args[1] and type(args[1]) == "Instance" then
@@ -341,30 +462,11 @@ local function SetupAllAttackListeners()
             attackEvent.OnClientEvent:Connect(function(attacker, data)
                 if not Config.Enabled then return end
                 if attacker == Player then return end
+                if isParryAnimPlaying then return end
                 if attacker and attacker:IsA("Player") then
                     DebugLog("AttackEvent from: " .. attacker.Name)
                     task.wait(Config.ParryDelay)
                     PerformParry()
-                end
-            end)
-        end
-    end
-    
-    -- Listen to Generator events (some might be related to attacks)
-    for remoteName, remote in pairs(GeneratorRemotes) do
-        if remote and remote:IsA("RemoteEvent") then
-            remote.OnClientEvent:Connect(function(...)
-                if not Config.Enabled then return end
-                
-                local args = {...}
-                -- Check if any arg is a player that's not us
-                for _, arg in pairs(args) do
-                    if type(arg) == "Instance" and arg:IsA("Player") and arg ~= Player then
-                        DebugLog("Generator event: " .. remoteName .. " from: " .. arg.Name)
-                        task.wait(Config.ParryDelay)
-                        PerformParry()
-                        break
-                    end
                 end
             end)
         end
@@ -389,20 +491,6 @@ local function CheckAllRemotes()
     DebugLog("ParryingDagger.parry: " .. tostring(ParryingDaggerRemotes.parry ~= nil))
     DebugLog("EmoteHandler: " .. tostring(Remotes.EmoteHandler ~= nil))
     DebugLog("=========================")
-    
-    -- Check attack remotes
-    local attackCount = 0
-    for name, remote in pairs(AttackRemotes) do
-        if remote then attackCount = attackCount + 1 end
-    end
-    DebugLog("Attack remotes found: " .. attackCount)
-    
-    -- Check killes remotes
-    local killesCount = 0
-    for name, remote in pairs(KillesRemotes) do
-        if remote then killesCount = killesCount + 1 end
-    end
-    DebugLog("Killes remotes found: " .. killesCount)
     
     return true
 end
@@ -448,13 +536,13 @@ end)
 Player.CharacterAdded:Connect(function(newCharacter)
     Character = newCharacter
     isParrying = false
+    isParryAnimPlaying = false
+    parryAnimTrack = nil
     task.wait(1)
 end)
 
--- UI Creation function (same as before, but I'll keep it compact)
+-- UI Creation
 local function CreateUI()
-    -- [UI CODE - Same as previous version]
-    -- (Keeping it short to avoid repetition, but include the full UI code)
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "AutoParryUI"
     ScreenGui.Parent = Player.PlayerGui
@@ -469,9 +557,6 @@ local function CreateUI()
     MainFrame.BorderSizePixel = 0
     MainFrame.ClipsDescendants = true
     MainFrame.Parent = ScreenGui
-    
-    -- ... (rest of UI code from previous version)
-    -- I'll include the full UI code below
     
     -- Shadow
     local Shadow = Instance.new("Frame")
@@ -632,6 +717,7 @@ local function CreateUI()
         
         if not Config.Enabled then
             isParrying = false
+            StopParryAnimation()
         end
         
         game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
@@ -681,8 +767,8 @@ local function CreateUI()
 end
 
 -- Initialize
-print("=== Auto Parry Script v3 - COMPLETE ===")
-print("Loading with ALL remotes...")
+print("=== Auto Parry Script v4 - WITH ANIMATION ===")
+print("Loading with animations...")
 
 -- Check all remotes
 CheckAllRemotes()
@@ -699,16 +785,25 @@ SetupAllAttackListeners()
 print("✅ Auto Parry loaded successfully!")
 print("📌 Press " .. tostring(Config.AutoParryKey.Name) .. " to toggle")
 print("📌 Status: " .. (Config.Enabled and "ON" or "OFF"))
-print("📌 Debug mode: " .. (Config.ShowDebug and "ON" or "OFF"))
+print("📌 Parry Animation: 3 seconds duration")
+print("📌 Cooldown: 3 seconds")
+print("📌 Animations loaded: " .. #PARRY_ANIMATIONS)
 
 -- Display initial status
 task.wait(1)
 game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
-    Text = "Auto Parry v3: " .. (Config.Enabled and "Enabled ✅" or "Disabled ❌"),
+    Text = "Auto Parry v4: " .. (Config.Enabled and "Enabled ✅" or "Disabled ❌"),
     Color = Config.Enabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
 })
 
--- Show detected remotes in chat
+-- Show animation info
+task.wait(0.5)
+game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+    Text = "🎬 Parry animations loaded: 2",
+    Color = Color3.fromRGB(255, 200, 100)
+})
+
+-- Show parry remotes found
 task.wait(0.5)
 local remoteCount = 0
 if Remotes.Parry then remoteCount = remoteCount + 1 end
@@ -719,4 +814,4 @@ if Remotes.AnimationControl then remoteCount = remoteCount + 1 end
 game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
     Text = "📡 Parry remotes found: " .. remoteCount,
     Color = Color3.fromRGB(100, 200, 255)
-})
+})q
