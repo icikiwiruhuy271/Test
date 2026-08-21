@@ -1,17 +1,20 @@
--- Auto Parry Script for Violence District v6
--- Optimized & Fixed Version
+-- Auto Parry Script for Violence District v7
+-- Full Feature Version
 
 local Player = game.Players.LocalPlayer
 local Character = Player.Character or Player.CharacterAdded:Wait()
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 -- Configuration
 local Config = {
     Enabled = false,
     DetectionRange = 12,
-    ParryAnimationDuration = 2.0, -- 2 detik
+    ParryAnimationDuration = 2.0,
+    ShowRangeCircle = true,
 }
 
 -- Parry Animations (Skin: Enten)
@@ -66,6 +69,8 @@ local Remotes = {
     EmoteHandler = GetRemote({"Remotes", "EmoteHandler"}),
     ParryDagger = GetRemote({"Remotes", "Items", "Parrying Dagger", "parry"}),
     AttackEvent = GetRemote({"Remotes", "Remotes", "AttackEvent"}),
+    ChaseRunevent = GetRemote({"Remotes", "Chase", "Runevent"}),
+    UpdateCharacterLook = GetRemote({"Remotes", "Game", "UpdateCharacterLook"}),
 }
 
 -- Attack Remotes
@@ -98,12 +103,70 @@ local lastParryTime = 0
 local parryAnimTracks = {}
 local originalSpeed = 16
 local originalJump = 50
+local rangeCircle = nil
 local uiElements = {}
 
--- Debug
-local function DebugLog(msg)
-    -- Disable debug for performance
-    -- print("[AutoParry]", msg)
+-- Create Range Circle
+local function CreateRangeCircle()
+    -- Remove old circle
+    if rangeCircle then
+        rangeCircle:Destroy()
+        rangeCircle = nil
+    end
+    
+    if not Config.ShowRangeCircle then return end
+    if not Character then return end
+    
+    -- Create circle parts
+    local circleGroup = Instance.new("Model")
+    circleGroup.Name = "ParryRangeCircle"
+    circleGroup.Parent = Workspace
+    
+    local segments = 32
+    local radius = Config.DetectionRange
+    
+    for i = 1, segments do
+        local angle = (i / segments) * math.pi * 2
+        local x = math.cos(angle) * radius
+        local z = math.sin(angle) * radius
+        
+        local part = Instance.new("Part")
+        part.Size = Vector3.new(0.3, 0.05, 0.3)
+        part.Position = Vector3.new(x, 0.1, z)
+        part.Anchored = true
+        part.CanCollide = false
+        part.Transparency = 0.7
+        part.BrickColor = BrickColor.new("Bright blue")
+        part.Material = Enum.Material.Neon
+        part.Parent = circleGroup
+    end
+    
+    rangeCircle = circleGroup
+    
+    -- Update position every frame
+    RunService.Heartbeat:Connect(function()
+        if not rangeCircle or not Character then 
+            if rangeCircle then
+                rangeCircle:Destroy()
+                rangeCircle = nil
+            end
+            return 
+        end
+        
+        local root = Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            rangeCircle:SetPrimaryPartCFrame(CFrame.new(root.Position))
+        end
+    end)
+end
+
+-- Update Range Circle
+local function UpdateRangeCircle()
+    if rangeCircle then
+        rangeCircle:Destroy()
+        rangeCircle = nil
+    end
+    CreateRangeCircle()
 end
 
 -- Play Parry Animations
@@ -155,39 +218,6 @@ local function StopParryAnimations()
     isAnimPlaying = false
 end
 
--- Create Parry Effect
-local function CreateParryEffect()
-    if not Character or not Character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local pos = Character.HumanoidRootPart.Position
-    
-    for i = 1, 2 do
-        local ring = Instance.new("Part")
-        ring.Size = Vector3.new(6 + (i * 3), 0.2, 6 + (i * 3))
-        ring.Position = pos + Vector3.new(0, 0.3 + (i * 0.2), 0)
-        ring.Anchored = true
-        ring.CanCollide = false
-        ring.Transparency = 0.5
-        ring.BrickColor = BrickColor.new("Bright blue")
-        ring.Material = Enum.Material.Neon
-        ring.Parent = workspace
-        
-        task.spawn(function()
-            for t = 0, 0.8, 0.05 do
-                task.wait(0.05)
-                local alpha = 1 - (t / 0.8)
-                ring.Transparency = 0.3 + (0.7 * (1 - alpha))
-                ring.Size = Vector3.new(
-                    6 + (i * 3) + (t * 20),
-                    0.2,
-                    6 + (i * 3) + (t * 20)
-                )
-            end
-            ring:Destroy()
-        end)
-    end
-end
-
 -- Check if killer is attacking
 local function IsKillerAttacking(character)
     if not character then return false end
@@ -236,9 +266,11 @@ local function PerformParry()
     if not Config.Enabled then return end
     if not Character then return end
     
-    -- Check game cooldown via ParryResult
-    if Remotes.ParryResult then
-        -- Try to detect cooldown from ParryResult
+    -- Chase Runevent for detection
+    if Remotes.ChaseRunevent then
+        pcall(function()
+            Remotes.ChaseRunevent:FireServer()
+        end)
     end
     
     local parrySuccess = false
@@ -283,6 +315,13 @@ local function PerformParry()
             end)
         end
         
+        -- Update character look
+        if Remotes.UpdateCharacterLook then
+            pcall(function()
+                Remotes.UpdateCharacterLook:FireServer()
+            end)
+        end
+        
         -- Play animations
         local hasAnim = PlayParryAnimations()
         
@@ -296,10 +335,7 @@ local function PerformParry()
                 humanoid.JumpPower = 0
             end
             
-            -- Visual effect
-            CreateParryEffect()
-            
-            -- Wait for animation
+            -- Wait for animation (NO BLUE EFFECT)
             task.wait(Config.ParryAnimationDuration)
             
             -- Re-enable movement
@@ -313,7 +349,6 @@ local function PerformParry()
             
             -- Start cooldown (63 seconds)
             isCooldown = true
-            DebugLog("Cooldown started (63s)")
             
             -- Cooldown timer
             local cooldownTime = 63
@@ -332,7 +367,6 @@ local function PerformParry()
             end
             
             isCooldown = false
-            DebugLog("Cooldown finished")
             
             if uiElements.cooldownLabel then
                 uiElements.cooldownLabel.Text = "⏱️ Ready"
@@ -409,9 +443,19 @@ local function SetupListeners()
             end
         end)
     end
+    
+    -- Chase Runevent
+    if Remotes.ChaseRunevent then
+        Remotes.ChaseRunevent.OnClientEvent:Connect(function()
+            if not Config.Enabled then return end
+            if isParrying or isAnimPlaying or isCooldown then return end
+            task.wait(0.05)
+            PerformParry()
+        end)
+    end
 end
 
--- Create Simple UI (No drag)
+-- Create UI with Range Slider
 local function CreateUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "AutoParryUI"
@@ -419,8 +463,8 @@ local function CreateUI()
     screenGui.ResetOnSpawn = false
     
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0, 200, 0, 130)
-    mainFrame.Position = UDim2.new(0, 10, 0.5, -65)
+    mainFrame.Size = UDim2.new(0, 220, 0, 180)
+    mainFrame.Position = UDim2.new(0, 10, 0.5, -90)
     mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
     mainFrame.BackgroundTransparency = 0.1
     mainFrame.BorderSizePixel = 0
@@ -459,30 +503,76 @@ local function CreateUI()
     
     -- Status
     local statusLabel = Instance.new("TextLabel")
-    statusLabel.Size = UDim2.new(0.9, 0, 0, 25)
-    statusLabel.Position = UDim2.new(0.05, 0, 0, 35)
+    statusLabel.Size = UDim2.new(0.9, 0, 0, 22)
+    statusLabel.Position = UDim2.new(0.05, 0, 0, 33)
     statusLabel.BackgroundTransparency = 1
     statusLabel.Text = Config.Enabled and "🟢 ON" or "🔴 OFF"
     statusLabel.TextColor3 = Config.Enabled and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
-    statusLabel.TextSize = 14
+    statusLabel.TextSize = 13
     statusLabel.Font = Enum.Font.GothamSemibold
     statusLabel.Parent = mainFrame
     
     -- Cooldown
     local cooldownLabel = Instance.new("TextLabel")
-    cooldownLabel.Size = UDim2.new(0.9, 0, 0, 20)
-    cooldownLabel.Position = UDim2.new(0.05, 0, 0, 62)
+    cooldownLabel.Size = UDim2.new(0.9, 0, 0, 18)
+    cooldownLabel.Position = UDim2.new(0.05, 0, 0, 57)
     cooldownLabel.BackgroundTransparency = 1
     cooldownLabel.Text = "⏱️ Ready"
     cooldownLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
-    cooldownLabel.TextSize = 12
+    cooldownLabel.TextSize = 11
     cooldownLabel.Font = Enum.Font.Gotham
     cooldownLabel.Parent = mainFrame
+    
+    -- Range Label
+    local rangeLabel = Instance.new("TextLabel")
+    rangeLabel.Size = UDim2.new(0.45, 0, 0, 18)
+    rangeLabel.Position = UDim2.new(0.05, 0, 0, 78)
+    rangeLabel.BackgroundTransparency = 1
+    rangeLabel.Text = "Range: " .. Config.DetectionRange
+    rangeLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+    rangeLabel.TextSize = 11
+    rangeLabel.Font = Enum.Font.Gotham
+    rangeLabel.Parent = mainFrame
+    
+    -- Range Slider
+    local sliderFrame = Instance.new("Frame")
+    sliderFrame.Size = UDim2.new(0.4, 0, 0, 15)
+    sliderFrame.Position = UDim2.new(0.55, 0, 0, 80)
+    sliderFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    sliderFrame.BorderSizePixel = 0
+    sliderFrame.Parent = mainFrame
+    
+    local sliderCorner = Instance.new("UICorner")
+    sliderCorner.CornerRadius = UDim.new(0, 8)
+    sliderCorner.Parent = sliderFrame
+    
+    local sliderButton = Instance.new("TextButton")
+    sliderButton.Size = UDim2.new(0, 20, 1, 0)
+    sliderButton.Position = UDim2.new((Config.DetectionRange - 5) / 25, 0, 0, 0)
+    sliderButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    sliderButton.Text = ""
+    sliderButton.BorderSizePixel = 0
+    sliderButton.Parent = sliderFrame
+    
+    local sliderCorner2 = Instance.new("UICorner")
+    sliderCorner2.CornerRadius = UDim.new(0, 8)
+    sliderCorner2.Parent = sliderButton
+    
+    -- Range display
+    local rangeDisplay = Instance.new("TextLabel")
+    rangeDisplay.Size = UDim2.new(0, 30, 0, 18)
+    rangeDisplay.Position = UDim2.new(0.85, 0, 0, 78)
+    rangeDisplay.BackgroundTransparency = 1
+    rangeDisplay.Text = tostring(Config.DetectionRange)
+    rangeDisplay.TextColor3 = Color3.fromRGB(100, 200, 255)
+    rangeDisplay.TextSize = 11
+    rangeDisplay.Font = Enum.Font.GothamBold
+    rangeDisplay.Parent = mainFrame
     
     -- Toggle Button
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0.8, 0, 0, 30)
-    toggleBtn.Position = UDim2.new(0.1, 0, 0, 88)
+    toggleBtn.Position = UDim2.new(0.1, 0, 0, 138)
     toggleBtn.BackgroundColor3 = Config.Enabled and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(180, 40, 40)
     toggleBtn.Text = Config.Enabled and "Disable" or "Enable"
     toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -499,9 +589,45 @@ local function CreateUI()
         mainFrame = mainFrame,
         statusLabel = statusLabel,
         cooldownLabel = cooldownLabel,
+        rangeLabel = rangeLabel,
+        rangeDisplay = rangeDisplay,
+        sliderButton = sliderButton,
+        sliderFrame = sliderFrame,
         toggleBtn = toggleBtn,
         screenGui = screenGui
     }
+    
+    -- Slider dragging
+    local isDragging = false
+    
+    local function UpdateRange(input)
+        local sliderPos = input.Position.X - sliderFrame.AbsolutePosition.X
+        local newPos = math.clamp(sliderPos / sliderFrame.AbsoluteSize.X, 0, 1)
+        local newRange = math.floor(5 + (newPos * 25))
+        newRange = math.clamp(newRange, 5, 30)
+        
+        Config.DetectionRange = newRange
+        sliderButton.Position = UDim2.new(newPos, 0, 0, 0)
+        uiElements.rangeLabel.Text = "Range: " .. newRange
+        uiElements.rangeDisplay.Text = tostring(newRange)
+        
+        -- Update range circle
+        UpdateRangeCircle()
+    end
+    
+    sliderButton.MouseButton1Down:Connect(function()
+        isDragging = true
+    end)
+    
+    sliderButton.MouseButton1Up:Connect(function()
+        isDragging = false
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            UpdateRange(input)
+        end
+    end)
     
     -- Toggle function
     toggleBtn.MouseButton1Click:Connect(function()
@@ -524,8 +650,12 @@ local function CreateUI()
             if uiElements.cooldownLabel then
                 uiElements.cooldownLabel.Text = "⏱️ Ready"
             end
+            CreateRangeCircle()
         end
     end)
+    
+    -- Create range circle initially
+    CreateRangeCircle()
 end
 
 -- Handle respawn
@@ -536,10 +666,11 @@ Player.CharacterAdded:Connect(function(newChar)
     isCooldown = false
     parryAnimTracks = {}
     task.wait(0.5)
+    CreateRangeCircle()
 end)
 
 -- Initialize
-print("=== Auto Parry v6 - Optimized ===")
+print("=== Auto Parry v7 - Full Feature ===")
 print("Loading...")
 
 CreateUI()
@@ -551,11 +682,12 @@ print("📌 Press P to toggle")
 print("📌 Status: OFF (default)")
 print("📌 Animations: 2 (Enten Skin)")
 print("📌 Cooldown: 63 seconds")
-print("📌 Range: 12")
+print("📌 Range: Adjustable (5-30)")
+print("📌 Range Circle: Enabled")
 
 -- Initial status
 task.wait(1)
 game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
-    Text = "Auto Parry v6: OFF (Press P to enable)",
+    Text = "Auto Parry v7: OFF (Press P to enable)",
     Color = Color3.fromRGB(255, 200, 0)
 })
