@@ -1,5 +1,5 @@
--- Auto Parry Script for Violence District v7
--- Full Feature Version
+-- Auto Parry Script for Violence District v8
+-- Ultimate Optimized Version
 
 local Player = game.Players.LocalPlayer
 local Character = Player.Character or Player.CharacterAdded:Wait()
@@ -105,10 +105,11 @@ local originalSpeed = 16
 local originalJump = 50
 local rangeCircle = nil
 local uiElements = {}
+local hitCooldown = 0
+local isHitValid = false
 
 -- Create Range Circle
 local function CreateRangeCircle()
-    -- Remove old circle
     if rangeCircle then
         rangeCircle:Destroy()
         rangeCircle = nil
@@ -117,7 +118,6 @@ local function CreateRangeCircle()
     if not Config.ShowRangeCircle then return end
     if not Character then return end
     
-    -- Create circle parts
     local circleGroup = Instance.new("Model")
     circleGroup.Name = "ParryRangeCircle"
     circleGroup.Parent = Workspace
@@ -143,7 +143,6 @@ local function CreateRangeCircle()
     
     rangeCircle = circleGroup
     
-    -- Update position every frame
     RunService.Heartbeat:Connect(function()
         if not rangeCircle or not Character then 
             if rangeCircle then
@@ -169,7 +168,43 @@ local function UpdateRangeCircle()
     CreateRangeCircle()
 end
 
--- Play Parry Animations
+-- Check if hit is valid (hit player body)
+local function IsValidHit(killer)
+    if not killer or not killer.Character then return false end
+    
+    local killerRoot = killer.Character:FindFirstChild("HumanoidRootPart")
+    local playerRoot = Character:FindFirstChild("HumanoidRootPart")
+    
+    if not killerRoot or not playerRoot then return false end
+    
+    -- Check distance
+    local dist = (killerRoot.Position - playerRoot.Position).Magnitude
+    if dist > Config.DetectionRange then return false end
+    
+    -- Check if killer is facing player
+    local lookVector = killerRoot.CFrame.LookVector
+    local toPlayer = (playerRoot.Position - killerRoot.Position).Unit
+    local dot = lookVector:Dot(toPlayer)
+    
+    -- Killer must be facing player (angle check)
+    if dot < 0.3 then return false end
+    
+    -- Check if any body part is in range
+    local bodyParts = {"Head", "Torso", "HumanoidRootPart", "LeftArm", "RightArm", "LeftLeg", "RightLeg"}
+    for _, partName in ipairs(bodyParts) do
+        local part = Character:FindFirstChild(partName)
+        if part then
+            local partDist = (killerRoot.Position - part.Position).Magnitude
+            if partDist < 8 then -- 8 studs hit range
+                return true
+            end
+        end
+    end
+    
+    return false
+end
+
+-- Play Parry Animations (both)
 local function PlayParryAnimations()
     if not Character then return false end
     
@@ -201,6 +236,37 @@ local function PlayParryAnimations()
     end
     
     if count > 0 then
+        isAnimPlaying = true
+        return true
+    end
+    return false
+end
+
+-- Play Single Parry Animation (for wall hits)
+local function PlaySingleParryAnimation()
+    if not Character then return false end
+    
+    local humanoid = Character:FindFirstChild("Humanoid")
+    if not humanoid then return false end
+    
+    local animator = humanoid:FindFirstChild("Animator")
+    if not animator then return false end
+    
+    -- Clear old animations
+    for _, track in pairs(parryAnimTracks) do
+        if track and track.IsPlaying then
+            track:Stop()
+        end
+    end
+    parryAnimTracks = {}
+    
+    -- Play only first animation
+    local anim = Instance.new("Animation")
+    anim.AnimationId = PARRY_ANIMATIONS[1]
+    local track = animator:LoadAnimation(anim)
+    if track then
+        track:Play()
+        table.insert(parryAnimTracks, track)
         isAnimPlaying = true
         return true
     end
@@ -249,10 +315,12 @@ local function GetClosestKiller()
     
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= Player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local dist = (root.Position - player.Character.HumanoidRootPart.Position).Magnitude
-            if dist < minDist and IsKillerAttacking(player.Character) then
-                minDist = dist
-                closest = player
+            if IsKillerAttacking(player.Character) then
+                local dist = (root.Position - player.Character.HumanoidRootPart.Position).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    closest = player
+                end
             end
         end
     end
@@ -261,12 +329,23 @@ local function GetClosestKiller()
 end
 
 -- Main Parry Function
-local function PerformParry()
+local function PerformParry(killer)
     if isParrying or isAnimPlaying or isCooldown then return end
     if not Config.Enabled then return end
     if not Character then return end
     
-    -- Chase Runevent for detection
+    -- Check if hit is valid
+    local isValid = false
+    local isWallHit = false
+    
+    if killer then
+        isValid = IsValidHit(killer)
+        if not isValid then
+            isWallHit = true
+        end
+    end
+    
+    -- Chase Runevent
     if Remotes.ChaseRunevent then
         pcall(function()
             Remotes.ChaseRunevent:FireServer()
@@ -322,8 +401,15 @@ local function PerformParry()
             end)
         end
         
-        -- Play animations
-        local hasAnim = PlayParryAnimations()
+        -- Play animations based on hit type
+        local hasAnim = false
+        if isValid then
+            -- Valid hit: play both animations
+            hasAnim = PlayParryAnimations()
+        else
+            -- Wall hit: play single animation
+            hasAnim = PlaySingleParryAnimation()
+        end
         
         if hasAnim then
             -- Disable movement
@@ -335,8 +421,12 @@ local function PerformParry()
                 humanoid.JumpPower = 0
             end
             
-            -- Wait for animation (NO BLUE EFFECT)
-            task.wait(Config.ParryAnimationDuration)
+            -- Wait for animation
+            if isValid then
+                task.wait(Config.ParryAnimationDuration) -- 2 detik
+            else
+                task.wait(1.0) -- 1 detik untuk wall hit
+            end
             
             -- Re-enable movement
             if humanoid then
@@ -390,10 +480,10 @@ local function StartDetection()
         local humanoid = Character:FindFirstChild("Humanoid")
         if not humanoid or humanoid.Health <= 0 then return end
         
-        -- Check for killer (even when moving)
+        -- Check for killer
         local killer = GetClosestKiller()
         if killer then
-            PerformParry()
+            PerformParry(killer)
         end
     end)
 end
@@ -409,7 +499,7 @@ local function SetupListeners()
             local args = {...}
             if args[1] and type(args[1]) == "Instance" and args[1]:IsA("Player") and args[1] ~= Player then
                 task.wait(0.05)
-                PerformParry()
+                PerformParry(args[1])
             end
         end)
     end
@@ -424,7 +514,7 @@ local function SetupListeners()
                 local args = {...}
                 if args[1] and type(args[1]) == "Instance" and args[1]:IsA("Player") and args[1] ~= Player then
                     task.wait(0.05)
-                    PerformParry()
+                    PerformParry(args[1])
                 end
             end)
         end
@@ -439,7 +529,7 @@ local function SetupListeners()
             
             if attacker and attacker:IsA("Player") then
                 task.wait(0.05)
-                PerformParry()
+                PerformParry(attacker)
             end
         end)
     end
@@ -450,12 +540,16 @@ local function SetupListeners()
             if not Config.Enabled then return end
             if isParrying or isAnimPlaying or isCooldown then return end
             task.wait(0.05)
-            PerformParry()
+            -- Try to get killer from chase
+            local killer = GetClosestKiller()
+            if killer then
+                PerformParry(killer)
+            end
         end)
     end
 end
 
--- Create UI with Range Slider
+-- Create UI with Range Input for Mobile
 local function CreateUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "AutoParryUI"
@@ -463,8 +557,8 @@ local function CreateUI()
     screenGui.ResetOnSpawn = false
     
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0, 220, 0, 180)
-    mainFrame.Position = UDim2.new(0, 10, 0.5, -90)
+    mainFrame.Size = UDim2.new(0, 240, 0, 200)
+    mainFrame.Position = UDim2.new(0, 10, 0.5, -100)
     mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
     mainFrame.BackgroundTransparency = 0.1
     mainFrame.BorderSizePixel = 0
@@ -525,19 +619,36 @@ local function CreateUI()
     
     -- Range Label
     local rangeLabel = Instance.new("TextLabel")
-    rangeLabel.Size = UDim2.new(0.45, 0, 0, 18)
+    rangeLabel.Size = UDim2.new(0.3, 0, 0, 22)
     rangeLabel.Position = UDim2.new(0.05, 0, 0, 78)
     rangeLabel.BackgroundTransparency = 1
-    rangeLabel.Text = "Range: " .. Config.DetectionRange
+    rangeLabel.Text = "Range:"
     rangeLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
-    rangeLabel.TextSize = 11
+    rangeLabel.TextSize = 12
     rangeLabel.Font = Enum.Font.Gotham
     rangeLabel.Parent = mainFrame
     
-    -- Range Slider
+    -- Range Input Box (for mobile)
+    local rangeInput = Instance.new("TextBox")
+    rangeInput.Size = UDim2.new(0.2, 0, 0, 22)
+    rangeInput.Position = UDim2.new(0.35, 0, 0, 78)
+    rangeInput.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    rangeInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    rangeInput.Text = tostring(Config.DetectionRange)
+    rangeInput.TextSize = 12
+    rangeInput.Font = Enum.Font.Gotham
+    rangeInput.TextXAlignment = Enum.TextXAlignment.Center
+    rangeInput.PlaceholderText = "5-30"
+    rangeInput.Parent = mainFrame
+    
+    local inputCorner = Instance.new("UICorner")
+    inputCorner.CornerRadius = UDim.new(0, 4)
+    inputCorner.Parent = rangeInput
+    
+    -- Range Slider (for PC)
     local sliderFrame = Instance.new("Frame")
-    sliderFrame.Size = UDim2.new(0.4, 0, 0, 15)
-    sliderFrame.Position = UDim2.new(0.55, 0, 0, 80)
+    sliderFrame.Size = UDim2.new(0.35, 0, 0, 15)
+    sliderFrame.Position = UDim2.new(0.58, 0, 0, 82)
     sliderFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
     sliderFrame.BorderSizePixel = 0
     sliderFrame.Parent = mainFrame
@@ -558,21 +669,21 @@ local function CreateUI()
     sliderCorner2.CornerRadius = UDim.new(0, 8)
     sliderCorner2.Parent = sliderButton
     
-    -- Range display
+    -- Range value display
     local rangeDisplay = Instance.new("TextLabel")
-    rangeDisplay.Size = UDim2.new(0, 30, 0, 18)
-    rangeDisplay.Position = UDim2.new(0.85, 0, 0, 78)
+    rangeDisplay.Size = UDim2.new(0, 30, 0, 22)
+    rangeDisplay.Position = UDim2.new(0.92, 0, 0, 78)
     rangeDisplay.BackgroundTransparency = 1
     rangeDisplay.Text = tostring(Config.DetectionRange)
     rangeDisplay.TextColor3 = Color3.fromRGB(100, 200, 255)
-    rangeDisplay.TextSize = 11
+    rangeDisplay.TextSize = 12
     rangeDisplay.Font = Enum.Font.GothamBold
     rangeDisplay.Parent = mainFrame
     
     -- Toggle Button
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0.8, 0, 0, 30)
-    toggleBtn.Position = UDim2.new(0.1, 0, 0, 138)
+    toggleBtn.Position = UDim2.new(0.1, 0, 0, 155)
     toggleBtn.BackgroundColor3 = Config.Enabled and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(180, 40, 40)
     toggleBtn.Text = Config.Enabled and "Disable" or "Enable"
     toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -590,6 +701,7 @@ local function CreateUI()
         statusLabel = statusLabel,
         cooldownLabel = cooldownLabel,
         rangeLabel = rangeLabel,
+        rangeInput = rangeInput,
         rangeDisplay = rangeDisplay,
         sliderButton = sliderButton,
         sliderFrame = sliderFrame,
@@ -597,7 +709,22 @@ local function CreateUI()
         screenGui = screenGui
     }
     
-    -- Slider dragging
+    -- Range Input function (for mobile)
+    rangeInput.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            local newRange = tonumber(rangeInput.Text)
+            if newRange and newRange >= 5 and newRange <= 30 then
+                Config.DetectionRange = math.floor(newRange)
+                rangeDisplay.Text = tostring(Config.DetectionRange)
+                sliderButton.Position = UDim2.new((Config.DetectionRange - 5) / 25, 0, 0, 0)
+                UpdateRangeCircle()
+            else
+                rangeInput.Text = tostring(Config.DetectionRange)
+            end
+        end
+    end)
+    
+    -- Slider dragging (for PC)
     local isDragging = false
     
     local function UpdateRange(input)
@@ -608,10 +735,9 @@ local function CreateUI()
         
         Config.DetectionRange = newRange
         sliderButton.Position = UDim2.new(newPos, 0, 0, 0)
-        uiElements.rangeLabel.Text = "Range: " .. newRange
-        uiElements.rangeDisplay.Text = tostring(newRange)
+        rangeDisplay.Text = tostring(newRange)
+        rangeInput.Text = tostring(newRange)
         
-        -- Update range circle
         UpdateRangeCircle()
     end
     
@@ -669,8 +795,41 @@ Player.CharacterAdded:Connect(function(newChar)
     CreateRangeCircle()
 end)
 
+-- Keyboard shortcut
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    if input.KeyCode == Enum.KeyCode.P then
+        Config.Enabled = not Config.Enabled
+        
+        if uiElements.statusLabel then
+            uiElements.statusLabel.Text = Config.Enabled and "🟢 ON" or "🔴 OFF"
+            uiElements.statusLabel.TextColor3 = Config.Enabled and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
+        end
+        if uiElements.toggleBtn then
+            uiElements.toggleBtn.Text = Config.Enabled and "Disable" or "Enable"
+            uiElements.toggleBtn.BackgroundColor3 = Config.Enabled and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(180, 40, 40)
+        end
+        
+        if not Config.Enabled then
+            isParrying = false
+            isCooldown = false
+            isAnimPlaying = false
+            StopParryAnimations()
+            if uiElements.cooldownLabel then
+                uiElements.cooldownLabel.Text = "⏱️ Disabled"
+            end
+        else
+            if uiElements.cooldownLabel then
+                uiElements.cooldownLabel.Text = "⏱️ Ready"
+            end
+            CreateRangeCircle()
+        end
+    end
+end)
+
 -- Initialize
-print("=== Auto Parry v7 - Full Feature ===")
+print("=== Auto Parry v8 - Ultimate Optimized ===")
 print("Loading...")
 
 CreateUI()
@@ -683,11 +842,13 @@ print("📌 Status: OFF (default)")
 print("📌 Animations: 2 (Enten Skin)")
 print("📌 Cooldown: 63 seconds")
 print("📌 Range: Adjustable (5-30)")
-print("📌 Range Circle: Enabled")
+print("📌 Valid Hit Detection: Enabled")
+print("📌 Wall Hit: Single Animation")
+print("📌 Body Hit: Both Animations")
 
 -- Initial status
 task.wait(1)
 game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
-    Text = "Auto Parry v7: OFF (Press P to enable)",
+    Text = "Auto Parry v8: OFF (Press P to enable)",
     Color = Color3.fromRGB(255, 200, 0)
 })
