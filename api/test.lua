@@ -1,4 +1,4 @@
--- Auto Parry Script for Violence District v4
+-- Auto Parry Script for Violence District v5
 -- Created for Roblox Violence District
 
 local Player = game.Players.LocalPlayer
@@ -12,17 +12,16 @@ local Players = game:GetService("Players")
 
 -- Configuration
 local Config = {
-    Enabled = true,
-    ParryDelay = 0.05, -- Delay before parrying (in seconds)
-    DetectionRange = 50, -- Max range to detect killer attacks
-    ShowDebug = true, -- Set to true for debug info
-    AutoParryKey = Enum.KeyCode.P, -- Toggle key
-    ParryCooldown = 3.0, -- Cooldown between parries (3 seconds)
-    ParryAnimationDuration = 3.0, -- Duration of parry animation
-    UseAllDetections = true, -- Use all detection methods
+    Enabled = false, -- Default OFF
+    ParryDelay = 0.05,
+    DetectionRange = 12, -- Detection range 12
+    ShowDebug = true,
+    AutoParryKey = Enum.KeyCode.P,
+    ParryCooldown = 63, -- 1 menit 3 detik
+    ParryAnimationDuration = 3.0,
 }
 
--- Animation IDs for parry
+-- Animation IDs for parry (Skin: Enten)
 local PARRY_ANIMATIONS = {
     ['rbxassetid://127096285501517'] = true,  -- Parry animation 1
     ['rbxassetid://104952902180174'] = true,  -- Parry animation 2
@@ -118,10 +117,12 @@ end
 local isParrying = false
 local lastParryTime = 0
 local UI = nil
-local currentTarget = nil
 local isParryAnimPlaying = false
-local parryAnimTrack = nil
-local currentParryAnimation = nil
+local parryAnimTracks = {} -- Store both animation tracks
+local originalWalkSpeed = 16
+local originalJumpPower = 50
+local parryCount = 0
+local isCooldownActive = false
 
 -- Debug function
 local function DebugLog(...)
@@ -130,69 +131,106 @@ local function DebugLog(...)
     end
 end
 
--- Play Parry Animation
-local function PlayParryAnimation()
-    if not Character then return end
+-- Play Both Parry Animations
+local function PlayParryAnimations()
+    if not Character then return false end
     
     local humanoid = Character:FindFirstChild("Humanoid")
-    if not humanoid then return end
+    if not humanoid then return false end
     
     local animator = humanoid:FindFirstChild("Animator")
-    if not animator then return end
+    if not animator then return false end
     
-    -- Stop any existing parry animation
-    if parryAnimTrack and parryAnimTrack.IsPlaying then
-        parryAnimTrack:Stop()
-        parryAnimTrack = nil
-    end
-    
-    -- Select random parry animation
-    local animIds = {}
-    for id, _ in pairs(PARRY_ANIMATIONS) do
-        table.insert(animIds, id)
-    end
-    
-    if #animIds == 0 then
-        DebugLog("No parry animations found!")
-        return
-    end
-    
-    local selectedAnim = animIds[math.random(1, #animIds)]
-    currentParryAnimation = selectedAnim
-    
-    DebugLog("Playing parry animation: " .. selectedAnim)
-    
-    -- Load and play animation
-    local success, anim = pcall(function()
-        return Instance.new("Animation")
-    end)
-    
-    if success and anim then
-        anim.AnimationId = selectedAnim
-        local track = animator:LoadAnimation(anim)
-        if track then
-            track:Play()
-            parryAnimTrack = track
-            isParryAnimPlaying = true
-            
-            -- Set animation speed
-            track:AdjustSpeed(1)
-            
-            DebugLog("Parry animation playing!")
+    -- Stop any existing parry animations
+    for _, track in pairs(parryAnimTracks) do
+        if track and track.IsPlaying then
+            track:Stop()
         end
+    end
+    parryAnimTracks = {}
+    
+    -- Play both animations
+    local successCount = 0
+    for animId, _ in pairs(PARRY_ANIMATIONS) do
+        local success, anim = pcall(function()
+            return Instance.new("Animation")
+        end)
+        
+        if success and anim then
+            anim.AnimationId = animId
+            local track = animator:LoadAnimation(anim)
+            if track then
+                track:Play()
+                table.insert(parryAnimTracks, track)
+                successCount = successCount + 1
+                DebugLog("Playing parry animation: " .. animId)
+            end
+        end
+    end
+    
+    if successCount > 0 then
+        isParryAnimPlaying = true
+        DebugLog("Both parry animations playing! (" .. successCount .. " animations)")
+        return true
     else
-        DebugLog("Failed to load parry animation!")
+        DebugLog("Failed to load parry animations!")
+        return false
     end
 end
 
--- Stop Parry Animation
-local function StopParryAnimation()
-    if parryAnimTrack and parryAnimTrack.IsPlaying then
-        parryAnimTrack:Stop()
-        parryAnimTrack = nil
+-- Stop Parry Animations
+local function StopParryAnimations()
+    for _, track in pairs(parryAnimTracks) do
+        if track and track.IsPlaying then
+            track:Stop()
+        end
     end
+    parryAnimTracks = {}
     isParryAnimPlaying = false
-    DebugLog("Parry animation stopped")
+    DebugLog("Parry animations stopped")
+end
+
+-- Create visual effect for parry
+local function CreateParryEffect()
+    if not Character or not Character:FindFirstChild("HumanoidRootPart") then return end
+    
+    local rootPart = Character.HumanoidRootPart
+    local position = rootPart.Position
+    
+    -- Create multiple rings
+    for i = 1, 3 do
+        local ring = Instance.new("Part")
+        ring.Size = Vector3.new(6 + (i * 2), 0.2, 6 + (i * 2))
+        ring.Position = position + Vector3.new(0, 0.3 + (i * 0.2), 0)
+        ring.Anchored = true
+        ring.CanCollide = false
+        ring.Transparency = 0.4 + (i * 0.1)
+        ring.BrickColor = BrickColor.new("Bright blue")
+        ring.Material = Enum.Material.Neon
+        ring.Parent = workspace
+        
+        -- Fade out
+        local startTime = tick()
+        local duration = 0.8
+        
+        game:GetService("RunService").Heartbeat:Connect(function()
+            local elapsed = tick() - startTime
+            if elapsed >= duration then
+                ring:Destroy()
+                return
+            end
+            
+            local alpha = 1 - (elapsed / duration)
+            ring.Transparency = 0.4 + (0.6 * (1 - alpha))
+            ring.Size = Vector3.new(
+                6 + (i * 2) + (elapsed * 15),
+                0.2,
+                6 + (i * 2) + (elapsed * 15)
+            )
+        end)
+    end
+    
+    DebugLog("Parry visual effects created")
 end
 
 -- Perform Parry with Animation
@@ -200,6 +238,7 @@ local function PerformParry()
     if isParrying then return end
     if not Config.Enabled then return end
     if isParryAnimPlaying then return end
+    if isCooldownActive then return end
     
     local currentTime = tick()
     if currentTime - lastParryTime < Config.ParryCooldown then return end
@@ -246,6 +285,7 @@ local function PerformParry()
     if parrySuccess then
         isParrying = true
         lastParryTime = currentTime
+        parryCount = parryCount + 1
         
         -- Stop emote if needed
         if Remotes.EmoteHandler then
@@ -254,87 +294,61 @@ local function PerformParry()
             end)
         end
         
-        -- Play parry animation
-        PlayParryAnimation()
+        -- Play both parry animations
+        local animSuccess = PlayParryAnimations()
         
-        -- Disable movement during parry animation
-        local humanoid = Character:FindFirstChild("Humanoid")
-        if humanoid then
-            humanoid.WalkSpeed = 0
-            humanoid.JumpPower = 0
-            DebugLog("Movement disabled during parry")
+        if animSuccess then
+            -- Disable movement during parry animation
+            local humanoid = Character:FindFirstChild("Humanoid")
+            if humanoid then
+                originalWalkSpeed = humanoid.WalkSpeed
+                originalJumpPower = humanoid.JumpPower
+                humanoid.WalkSpeed = 0
+                humanoid.JumpPower = 0
+                DebugLog("Movement disabled during parry (3 seconds)")
+            end
+            
+            DebugLog("✅ Parry executed successfully! (Cooldown: 63 seconds)")
+            
+            -- Create visual effect
+            CreateParryEffect()
+            
+            -- Schedule animation stop after 3 seconds
+            task.wait(Config.ParryAnimationDuration)
+            
+            -- Stop animation and re-enable movement
+            StopParryAnimations()
+            if humanoid then
+                humanoid.WalkSpeed = originalWalkSpeed
+                humanoid.JumpPower = originalJumpPower
+                DebugLog("Movement re-enabled")
+            end
+            
+            -- Start cooldown
+            isCooldownActive = true
+            DebugLog("Cooldown started: 63 seconds")
+            
+            -- Cooldown countdown
+            local remainingTime = Config.ParryCooldown
+            while remainingTime > 0 do
+                if not Config.Enabled then break end
+                task.wait(1)
+                remainingTime = remainingTime - 1
+                if remainingTime % 5 == 0 then
+                    DebugLog("Cooldown remaining: " .. remainingTime .. " seconds")
+                end
+            end
+            
+            isCooldownActive = false
+            DebugLog("Cooldown finished!")
+            
+            isParrying = false
+        else
+            isParrying = false
         end
-        
-        DebugLog("✅ Parry executed successfully! (3 second cooldown)")
-        
-        -- Create visual effect
-        CreateParryEffect()
-        
-        -- Schedule animation stop after 3 seconds
-        task.wait(Config.ParryAnimationDuration)
-        
-        -- Stop animation and re-enable movement
-        StopParryAnimation()
-        if humanoid then
-            humanoid.WalkSpeed = 16 -- Default walk speed
-            humanoid.JumpPower = 50 -- Default jump power
-            DebugLog("Movement re-enabled")
-        end
-        
-        isParrying = false
     else
         DebugLog("❌ No parry remote found!")
     end
-end
-
--- Create visual effect for parry
-local function CreateParryEffect()
-    if not Character or not Character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local rootPart = Character.HumanoidRootPart
-    local position = rootPart.Position
-    
-    -- Create a ring effect
-    local ring = Instance.new("Part")
-    ring.Size = Vector3.new(8, 0.2, 8)
-    ring.Position = position + Vector3.new(0, 0.5, 0)
-    ring.Anchored = true
-    ring.CanCollide = false
-    ring.Transparency = 0.5
-    ring.BrickColor = BrickColor.new("Bright blue")
-    ring.Material = Enum.Material.Neon
-    ring.Parent = workspace
-    
-    -- Add a glow
-    local glow = Instance.new("Part")
-    glow.Size = Vector3.new(10, 0.1, 10)
-    glow.Position = position + Vector3.new(0, 0.3, 0)
-    glow.Anchored = true
-    glow.CanCollide = false
-    glow.Transparency = 0.7
-    glow.BrickColor = BrickColor.new("White")
-    glow.Material = Enum.Material.Neon
-    glow.Parent = workspace
-    
-    -- Fade out effect
-    local startTime = tick()
-    local duration = 0.5
-    
-    game:GetService("RunService").Heartbeat:Connect(function()
-        local elapsed = tick() - startTime
-        if elapsed >= duration then
-            ring:Destroy()
-            glow:Destroy()
-            return
-        end
-        
-        local alpha = 1 - (elapsed / duration)
-        ring.Transparency = 0.5 + (0.5 * (1 - alpha))
-        glow.Transparency = 0.7 + (0.3 * (1 - alpha))
-        ring.Size = Vector3.new(8 + (elapsed * 10), 0.2, 8 + (elapsed * 10))
-    end)
-    
-    DebugLog("Parry visual effect created")
 end
 
 -- Check if character is attacking via animation
@@ -385,7 +399,7 @@ local function GetClosestKiller()
     return closestKiller
 end
 
--- Main detection loop
+-- Main detection loop - FIXED for moving
 local function StartAutoParry()
     RunService.Heartbeat:Connect(function()
         if not Config.Enabled then return end
@@ -402,8 +416,9 @@ local function StartAutoParry()
         
         -- Skip if parry animation is playing
         if isParryAnimPlaying then return end
+        if isCooldownActive then return end
         
-        -- Find closest attacking killer
+        -- Always check for killer attacks (even when moving)
         local killer = GetClosestKiller()
         if killer then
             PerformParry()
@@ -419,6 +434,7 @@ local function SetupAllAttackListeners()
             remote.OnClientEvent:Connect(function(...)
                 if not Config.Enabled then return end
                 if isParryAnimPlaying then return end
+                if isCooldownActive then return end
                 
                 local args = {...}
                 if args[1] and type(args[1]) == "Instance" then
@@ -442,6 +458,7 @@ local function SetupAllAttackListeners()
             remote.OnClientEvent:Connect(function(...)
                 if not Config.Enabled then return end
                 if isParryAnimPlaying then return end
+                if isCooldownActive then return end
                 
                 local args = {...}
                 if args[1] and type(args[1]) == "Instance" then
@@ -463,6 +480,8 @@ local function SetupAllAttackListeners()
                 if not Config.Enabled then return end
                 if attacker == Player then return end
                 if isParryAnimPlaying then return end
+                if isCooldownActive then return end
+                
                 if attacker and attacker:IsA("Player") then
                     DebugLog("AttackEvent from: " .. attacker.Name)
                     task.wait(Config.ParryDelay)
@@ -510,6 +529,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 local statusLabel = mainFrame:FindFirstChild("StatusContainer") and mainFrame.StatusContainer:FindFirstChild("StatusLabel")
                 local toggleButton = mainFrame:FindFirstChild("ButtonsContainer") and mainFrame.ButtonsContainer:FindFirstChild("ToggleButton")
                 local statusGlow = mainFrame:FindFirstChild("StatusContainer") and mainFrame.StatusContainer:FindFirstChild("StatusGlow")
+                local cooldownLabel = mainFrame:FindFirstChild("CooldownLabel")
                 
                 if statusLabel then
                     statusLabel.Text = Config.Enabled and "🟢 Status: ON" or "🔴 Status: OFF"
@@ -521,6 +541,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 end
                 if statusGlow then
                     statusGlow.BackgroundColor3 = Config.Enabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                end
+                if cooldownLabel then
+                    cooldownLabel.Text = "⏱️ Cooldown: " .. (Config.Enabled and "Ready" or "Disabled")
                 end
             end
         end
@@ -537,11 +560,12 @@ Player.CharacterAdded:Connect(function(newCharacter)
     Character = newCharacter
     isParrying = false
     isParryAnimPlaying = false
-    parryAnimTrack = nil
+    isCooldownActive = false
+    parryAnimTracks = {}
     task.wait(1)
 end)
 
--- UI Creation
+-- UI Creation - FIXED for mobile drag
 local function CreateUI()
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "AutoParryUI"
@@ -550,8 +574,8 @@ local function CreateUI()
     ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     
     local MainFrame = Instance.new("Frame")
-    MainFrame.Size = UDim2.new(0, 210, 0, 120)
-    MainFrame.Position = UDim2.new(0, 10, 0.5, -60)
+    MainFrame.Size = UDim2.new(0, 220, 0, 150)
+    MainFrame.Position = UDim2.new(0, 10, 0.5, -75)
     MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
     MainFrame.BackgroundTransparency = 0.15
     MainFrame.BorderSizePixel = 0
@@ -593,9 +617,9 @@ local function CreateUI()
     BorderCorner.CornerRadius = UDim.new(0, 12)
     BorderCorner.Parent = Border
     
-    -- Drag Handle
+    -- Drag Handle (entire top area for mobile)
     local DragHandle = Instance.new("Frame")
-    DragHandle.Size = UDim2.new(1, 0, 0, 30)
+    DragHandle.Size = UDim2.new(1, 0, 0, 35)
     DragHandle.Position = UDim2.new(0, 0, 0, 0)
     DragHandle.BackgroundColor3 = Color3.fromRGB(40, 40, 70)
     DragHandle.BackgroundTransparency = 0.3
@@ -605,14 +629,14 @@ local function CreateUI()
     DragCorner.CornerRadius = UDim.new(0, 12)
     DragCorner.Parent = DragHandle
     
-    -- Title
+    -- Title with skin name
     local Title = Instance.new("TextLabel")
     Title.Size = UDim2.new(1, -60, 1, 0)
     Title.Position = UDim2.new(0, 10, 0, 0)
     Title.BackgroundTransparency = 1
-    Title.Text = "⚔️ Auto Parry"
+    Title.Text = "⚔️ Auto Parry [ENTEN]"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Title.TextSize = 16
+    Title.TextSize = 14
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.Font = Enum.Font.GothamBold
     Title.Parent = DragHandle
@@ -630,8 +654,8 @@ local function CreateUI()
     
     -- Status Container
     local StatusContainer = Instance.new("Frame")
-    StatusContainer.Size = UDim2.new(0.9, 0, 0, 30)
-    StatusContainer.Position = UDim2.new(0.05, 0, 0, 35)
+    StatusContainer.Size = UDim2.new(0.9, 0, 0, 25)
+    StatusContainer.Position = UDim2.new(0.05, 0, 0, 40)
     StatusContainer.BackgroundTransparency = 1
     StatusContainer.Parent = MainFrame
     
@@ -642,7 +666,7 @@ local function CreateUI()
     StatusLabel.BackgroundTransparency = 1
     StatusLabel.Text = Config.Enabled and "🟢 Status: ON" or "🔴 Status: OFF"
     StatusLabel.TextColor3 = Config.Enabled and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
-    StatusLabel.TextSize = 14
+    StatusLabel.TextSize = 13
     StatusLabel.TextXAlignment = Enum.TextXAlignment.Center
     StatusLabel.Font = Enum.Font.GothamSemibold
     StatusLabel.Parent = StatusContainer
@@ -659,10 +683,22 @@ local function CreateUI()
     GlowCorner.CornerRadius = UDim.new(0, 6)
     GlowCorner.Parent = StatusGlow
     
+    -- Cooldown Label
+    local CooldownLabel = Instance.new("TextLabel")
+    CooldownLabel.Size = UDim2.new(0.9, 0, 0, 20)
+    CooldownLabel.Position = UDim2.new(0.05, 0, 0, 68)
+    CooldownLabel.BackgroundTransparency = 1
+    CooldownLabel.Text = "⏱️ Cooldown: Ready"
+    CooldownLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
+    CooldownLabel.TextSize = 12
+    CooldownLabel.TextXAlignment = Enum.TextXAlignment.Center
+    CooldownLabel.Font = Enum.Font.Gotham
+    CooldownLabel.Parent = MainFrame
+    
     -- Buttons Container
     local ButtonsContainer = Instance.new("Frame")
     ButtonsContainer.Size = UDim2.new(0.9, 0, 0, 35)
-    ButtonsContainer.Position = UDim2.new(0.05, 0, 0, 70)
+    ButtonsContainer.Position = UDim2.new(0.05, 0, 0, 92)
     ButtonsContainer.BackgroundTransparency = 1
     ButtonsContainer.Parent = MainFrame
     
@@ -714,10 +750,12 @@ local function CreateUI()
         StatusLabel.Text = statusText
         StatusLabel.TextColor3 = statusColor
         StatusGlow.BackgroundColor3 = glowColor
+        CooldownLabel.Text = Config.Enabled and "⏱️ Cooldown: Ready" or "⏱️ Cooldown: Disabled"
         
         if not Config.Enabled then
             isParrying = false
-            StopParryAnimation()
+            isCooldownActive = false
+            StopParryAnimations()
         end
         
         game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
@@ -726,17 +764,18 @@ local function CreateUI()
         })
     end)
     
-    -- Dragging system
+    -- DRAGGING SYSTEM - IMPROVED FOR MOBILE
     local dragging = false
     local dragStart = nil
     local startPos = nil
+    local dragObject = nil
     
     local function UpdatePosition(input)
         local delta = input.Position - dragStart
         local newX = startPos.X.Offset + delta.X
         local newY = startPos.Y.Offset + delta.Y
         
-        local viewportSize = game:GetService("GuiService"):GetViewportSize()
+        local viewportSize = GuiService:GetViewportSize()
         local frameSize = MainFrame.AbsoluteSize
         newX = math.clamp(newX, 0, viewportSize.X - frameSize.X)
         newY = math.clamp(newY, 0, viewportSize.Y - frameSize.Y)
@@ -744,22 +783,47 @@ local function CreateUI()
         MainFrame.Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY)
     end
     
+    -- Mouse drag
     DragHandle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
             dragStart = input.Position
             startPos = MainFrame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
+            dragObject = input
         end
     end)
     
+    DragHandle.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+            dragObject = nil
+        end
+    end)
+    
+    -- Touch drag for mobile
+    DragHandle.TouchBegan:Connect(function(touch)
+        dragging = true
+        dragStart = touch.Position
+        startPos = MainFrame.Position
+        dragObject = touch
+    end)
+    
+    DragHandle.TouchEnded:Connect(function()
+        dragging = false
+        dragObject = nil
+    end)
+    
+    -- Update position on input changed
     UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             UpdatePosition(input)
+        end
+    end)
+    
+    -- Touch moved for mobile
+    DragHandle.TouchMoved:Connect(function(touch)
+        if dragging then
+            UpdatePosition(touch)
         end
     end)
     
@@ -767,8 +831,9 @@ local function CreateUI()
 end
 
 -- Initialize
-print("=== Auto Parry Script v4 - WITH ANIMATION ===")
+print("=== Auto Parry Script v5 - FINAL ===")
 print("Loading with animations...")
+print("Skin: Enten")
 
 -- Check all remotes
 CheckAllRemotes()
@@ -784,22 +849,24 @@ SetupAllAttackListeners()
 
 print("✅ Auto Parry loaded successfully!")
 print("📌 Press " .. tostring(Config.AutoParryKey.Name) .. " to toggle")
-print("📌 Status: " .. (Config.Enabled and "ON" or "OFF"))
+print("📌 Status: " .. (Config.Enabled and "ON" or "OFF (Default OFF)"))
 print("📌 Parry Animation: 3 seconds duration")
-print("📌 Cooldown: 3 seconds")
+print("📌 Cooldown: 63 seconds (1 minute 3 seconds)")
+print("📌 Detection Range: 12")
 print("📌 Animations loaded: " .. #PARRY_ANIMATIONS)
+print("📌 Skin: Enten")
 
 -- Display initial status
 task.wait(1)
 game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
-    Text = "Auto Parry v4: " .. (Config.Enabled and "Enabled ✅" or "Disabled ❌"),
-    Color = Config.Enabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    Text = "Auto Parry v5: " .. (Config.Enabled and "Enabled ✅" or "Disabled ❌ (Press P to enable)"),
+    Color = Config.Enabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 200, 0)
 })
 
 -- Show animation info
 task.wait(0.5)
 game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
-    Text = "🎬 Parry animations loaded: 2",
+    Text = "🎬 Parry animations: 2 (Skin: Enten)",
     Color = Color3.fromRGB(255, 200, 100)
 })
 
@@ -814,4 +881,10 @@ if Remotes.AnimationControl then remoteCount = remoteCount + 1 end
 game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
     Text = "📡 Parry remotes found: " .. remoteCount,
     Color = Color3.fromRGB(100, 200, 255)
+})
+
+task.wait(0.5)
+game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+    Text = "⏱️ Cooldown: 63 seconds | Range: 12",
+    Color = Color3.fromRGB(255, 150, 50)
 })
