@@ -1,5 +1,5 @@
--- Auto Parry Script for Violence District v8
--- Ultimate Optimized Version
+-- Auto Parry Script for Violence District v9
+-- Ultimate With FOV Circle
 
 local Player = game.Players.LocalPlayer
 local Character = Player.Character or Player.CharacterAdded:Wait()
@@ -108,7 +108,7 @@ local uiElements = {}
 local hitCooldown = 0
 local isHitValid = false
 
--- Create Range Circle
+-- Create FOV Range Circle
 local function CreateRangeCircle()
     if rangeCircle then
         rangeCircle:Destroy()
@@ -122,27 +122,76 @@ local function CreateRangeCircle()
     circleGroup.Name = "ParryRangeCircle"
     circleGroup.Parent = Workspace
     
-    local segments = 32
+    local segments = 48
     local radius = Config.DetectionRange
     
+    -- Main circle
     for i = 1, segments do
         local angle = (i / segments) * math.pi * 2
         local x = math.cos(angle) * radius
         local z = math.sin(angle) * radius
         
         local part = Instance.new("Part")
-        part.Size = Vector3.new(0.3, 0.05, 0.3)
+        part.Size = Vector3.new(0.4, 0.05, 0.4)
         part.Position = Vector3.new(x, 0.1, z)
         part.Anchored = true
         part.CanCollide = false
-        part.Transparency = 0.7
+        part.Transparency = 0.6
         part.BrickColor = BrickColor.new("Bright blue")
         part.Material = Enum.Material.Neon
         part.Parent = circleGroup
     end
     
+    -- Inner glow ring
+    for i = 1, segments do
+        local angle = (i / segments) * math.pi * 2
+        local x = math.cos(angle) * (radius - 0.5)
+        local z = math.sin(angle) * (radius - 0.5)
+        
+        local part = Instance.new("Part")
+        part.Size = Vector3.new(0.2, 0.03, 0.2)
+        part.Position = Vector3.new(x, 0.12, z)
+        part.Anchored = true
+        part.CanCollide = false
+        part.Transparency = 0.8
+        part.BrickColor = BrickColor.new("Cyan")
+        part.Material = Enum.Material.Neon
+        part.Parent = circleGroup
+    end
+    
+    -- Center marker
+    local center = Instance.new("Part")
+    center.Size = Vector3.new(0.5, 0.05, 0.5)
+    center.Position = Vector3.new(0, 0.1, 0)
+    center.Anchored = true
+    center.CanCollide = false
+    center.Transparency = 0.4
+    center.BrickColor = BrickColor.new("Bright blue")
+    center.Material = Enum.Material.Neon
+    center.Parent = circleGroup
+    
+    -- Distance markers (every 5 studs)
+    for dist = 5, radius, 5 do
+        for i = 1, 8 do
+            local angle = (i / 8) * math.pi * 2
+            local x = math.cos(angle) * dist
+            local z = math.sin(angle) * dist
+            
+            local marker = Instance.new("Part")
+            marker.Size = Vector3.new(0.15, 0.03, 0.15)
+            marker.Position = Vector3.new(x, 0.12, z)
+            marker.Anchored = true
+            marker.CanCollide = false
+            marker.Transparency = 0.7
+            marker.BrickColor = BrickColor.new("White")
+            marker.Material = Enum.Material.Neon
+            marker.Parent = circleGroup
+        end
+    end
+    
     rangeCircle = circleGroup
     
+    -- Update position every frame
     RunService.Heartbeat:Connect(function()
         if not rangeCircle or not Character then 
             if rangeCircle then
@@ -540,7 +589,6 @@ local function SetupListeners()
             if not Config.Enabled then return end
             if isParrying or isAnimPlaying or isCooldown then return end
             task.wait(0.05)
-            -- Try to get killer from chase
             local killer = GetClosestKiller()
             if killer then
                 PerformParry(killer)
@@ -549,7 +597,7 @@ local function SetupListeners()
     end
 end
 
--- Create UI with Range Input for Mobile
+-- Create UI with FOV Circle Toggle
 local function CreateUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "AutoParryUI"
@@ -557,8 +605,8 @@ local function CreateUI()
     screenGui.ResetOnSpawn = false
     
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0, 240, 0, 200)
-    mainFrame.Position = UDim2.new(0, 10, 0.5, -100)
+    mainFrame.Size = UDim2.new(0, 240, 0, 230)
+    mainFrame.Position = UDim2.new(0, 10, 0.5, -115)
     mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
     mainFrame.BackgroundTransparency = 0.1
     mainFrame.BorderSizePixel = 0
@@ -680,10 +728,35 @@ local function CreateUI()
     rangeDisplay.Font = Enum.Font.GothamBold
     rangeDisplay.Parent = mainFrame
     
+    -- FOV Circle Toggle
+    local fovLabel = Instance.new("TextLabel")
+    fovLabel.Size = UDim2.new(0.5, 0, 0, 22)
+    fovLabel.Position = UDim2.new(0.05, 0, 0, 108)
+    fovLabel.BackgroundTransparency = 1
+    fovLabel.Text = "🎯 FOV Circle:"
+    fovLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+    fovLabel.TextSize = 12
+    fovLabel.Font = Enum.Font.Gotham
+    fovLabel.Parent = mainFrame
+    
+    local fovToggle = Instance.new("TextButton")
+    fovToggle.Size = UDim2.new(0.2, 0, 0, 22)
+    fovToggle.Position = UDim2.new(0.75, 0, 0, 108)
+    fovToggle.BackgroundColor3 = Config.ShowRangeCircle and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(180, 40, 40)
+    fovToggle.Text = Config.ShowRangeCircle and "ON" or "OFF"
+    fovToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    fovToggle.TextSize = 12
+    fovToggle.Font = Enum.Font.Gotham
+    fovToggle.Parent = mainFrame
+    
+    local fovCorner = Instance.new("UICorner")
+    fovCorner.CornerRadius = UDim.new(0, 4)
+    fovCorner.Parent = fovToggle
+    
     -- Toggle Button
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0.8, 0, 0, 30)
-    toggleBtn.Position = UDim2.new(0.1, 0, 0, 155)
+    toggleBtn.Position = UDim2.new(0.1, 0, 0, 185)
     toggleBtn.BackgroundColor3 = Config.Enabled and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(180, 40, 40)
     toggleBtn.Text = Config.Enabled and "Disable" or "Enable"
     toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -705,6 +778,7 @@ local function CreateUI()
         rangeDisplay = rangeDisplay,
         sliderButton = sliderButton,
         sliderFrame = sliderFrame,
+        fovToggle = fovToggle,
         toggleBtn = toggleBtn,
         screenGui = screenGui
     }
@@ -755,6 +829,22 @@ local function CreateUI()
         end
     end)
     
+    -- FOV Circle Toggle
+    fovToggle.MouseButton1Click:Connect(function()
+        Config.ShowRangeCircle = not Config.ShowRangeCircle
+        fovToggle.Text = Config.ShowRangeCircle and "ON" or "OFF"
+        fovToggle.BackgroundColor3 = Config.ShowRangeCircle and Color3.fromRGB(0, 180, 80) or Color3.fromRGB(180, 40, 40)
+        
+        if Config.ShowRangeCircle then
+            CreateRangeCircle()
+        else
+            if rangeCircle then
+                rangeCircle:Destroy()
+                rangeCircle = nil
+            end
+        end
+    end)
+    
     -- Toggle function
     toggleBtn.MouseButton1Click:Connect(function()
         Config.Enabled = not Config.Enabled
@@ -772,16 +862,24 @@ local function CreateUI()
             if uiElements.cooldownLabel then
                 uiElements.cooldownLabel.Text = "⏱️ Disabled"
             end
+            if rangeCircle then
+                rangeCircle:Destroy()
+                rangeCircle = nil
+            end
         else
             if uiElements.cooldownLabel then
                 uiElements.cooldownLabel.Text = "⏱️ Ready"
             end
-            CreateRangeCircle()
+            if Config.ShowRangeCircle then
+                CreateRangeCircle()
+            end
         end
     end)
     
     -- Create range circle initially
-    CreateRangeCircle()
+    if Config.ShowRangeCircle then
+        CreateRangeCircle()
+    end
 end
 
 -- Handle respawn
@@ -792,7 +890,9 @@ Player.CharacterAdded:Connect(function(newChar)
     isCooldown = false
     parryAnimTracks = {}
     task.wait(0.5)
-    CreateRangeCircle()
+    if Config.ShowRangeCircle then
+        CreateRangeCircle()
+    end
 end)
 
 -- Keyboard shortcut
@@ -819,17 +919,23 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if uiElements.cooldownLabel then
                 uiElements.cooldownLabel.Text = "⏱️ Disabled"
             end
+            if rangeCircle then
+                rangeCircle:Destroy()
+                rangeCircle = nil
+            end
         else
             if uiElements.cooldownLabel then
                 uiElements.cooldownLabel.Text = "⏱️ Ready"
             end
-            CreateRangeCircle()
+            if Config.ShowRangeCircle then
+                CreateRangeCircle()
+            end
         end
     end
 end)
 
 -- Initialize
-print("=== Auto Parry v8 - Ultimate Optimized ===")
+print("=== Auto Parry v9 - With FOV Circle ===")
 print("Loading...")
 
 CreateUI()
@@ -842,6 +948,7 @@ print("📌 Status: OFF (default)")
 print("📌 Animations: 2 (Enten Skin)")
 print("📌 Cooldown: 63 seconds")
 print("📌 Range: Adjustable (5-30)")
+print("📌 FOV Circle: Toggle ON/OFF")
 print("📌 Valid Hit Detection: Enabled")
 print("📌 Wall Hit: Single Animation")
 print("📌 Body Hit: Both Animations")
@@ -849,6 +956,6 @@ print("📌 Body Hit: Both Animations")
 -- Initial status
 task.wait(1)
 game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
-    Text = "Auto Parry v8: OFF (Press P to enable)",
+    Text = "Auto Parry v9: OFF (Press P to enable)",
     Color = Color3.fromRGB(255, 200, 0)
 })
